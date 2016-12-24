@@ -1,0 +1,483 @@
+---
+title: "Data 605 Final Exam"
+author: "Armenoush Aslanian-Persico"
+date: "December 2016"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    code_folding: hide
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+---
+
+
+```{r libraries, warning=FALSE, message=FALSE}
+library(MASS)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(reshape)
+library(corrplot)
+library(Rmisc)
+```
+
+
+```{r load-traindata}
+df <- read.csv("train.csv")
+```
+
+##Introduction
+
+Below is the dataset of house prices available from Kaggle.com. The dataset has 1459 observations of houses in Ames, Iowa, and 79 variables potentially contributing to the house sale price.
+
+The full dataset and dictionary are available at:
+https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data
+
+
+```{r viewdata, eval=TRUE}
+#kable(head(df))
+datatable(df, options = list( pageLength = 5, lengthMenu = c(5, 10, 40),   initComplete = JS(
+    "function(settings, json) {",
+    "$(this.api().table().header()).css({'background-color': '#01975b', 'color': '#fff'});",
+    "}")), rownames=TRUE)
+```
+
+##Part 1: Variables
+
+*Pick one of the quanititative independent variables from the training data set (train.csv) , and define that variable as  X.   Make sure this variable is skewed to the right!  Pick the dependent variable and define it as  Y.*
+
+```{r testvar, eval=FALSE}
+#test variable
+X1<-df$OverallQual
+Y1<-df$SalePrice
+
+plot(X1,Y1)
+hist(Y1, col="blue", main="Histogram of Overall Quality")
+```
+
+```{r summary-plots}
+#chosen variable
+X<-df$YearBuilt
+Y<-df$SalePrice
+
+plot(X,Y, col="#4caf50", main="Scatterplot of Year Built and Sale Price", xlab = "Year Built", ylab="Sale Price")
+abline(lm(Y~X), col="yellow", lwd=3) # regression line (y~x) 
+
+hist(X, col="green", main="Histogram of Year Built", xlab = "Year Built")
+hist(Y, col="#80cbc4", main="Histogram of Sale Price", xlab = "Sale Price")
+print("Summary of X variable: Year Built")
+summary(X)
+print("Summary of Y variable: Sale Price")
+summary(Y)
+```
+
+##Part 2: Probability
+
+*Probability.   Calculate as a minimum the below probabilities a through c.  Assume the small letter "x" is estimated as the 3d quartile of the X variable, and the small letter "y" is estimated as the 2d quartile of the Y variable.  Interpret the meaning of all probabilities.  In addition, make a table of counts as shown below.*
+
+a. $$p_1 =p(X>x | Y>y) $$
+
+Given an above median sale price, the probability that a house has a year built greater than the third quartile.
+
+```{r p1}
+XQ3<-quantile(X, probs=0.75) #2000 #3rd quartile of X variable
+YQ2<-quantile (Y, probs=0.50) #163000 #2nd quartile, or median, of Y variable
+
+n<-(nrow(df))
+yearbuilt<-as.numeric(df$YearBuilt)
+saleprice<-as.numeric(df$SalePrice)
+
+nYQ2<-nrow(subset(df,saleprice>YQ2))
+
+
+p1<-nrow(subset(df, yearbuilt > XQ3 & saleprice>YQ2))/nYQ2
+p1
+```
+
+b. $$p_2 = p(X>x , Y>y) $$
+
+Given the complete data set, the probability that a house has a year built greater than the third quartile and a sale price above median value.
+
+```{r p2}
+p2<-nrow(subset(df, yearbuilt > XQ3 & saleprice>YQ2))/n
+p2
+```
+
+c. $$p_3 =p(X<x | Y>y) $$
+
+Given an above median selling price, the probability that a house has a year built less than [less than or equal to] the third quartile.
+
+```{r p3}
+p3<-nrow(subset(df, yearbuilt <=XQ3 & saleprice>YQ2))/nYQ2
+p3
+```
+
+```{r tblcounts1}
+c1<-nrow(subset(df, yearbuilt <=XQ3 & saleprice<=YQ2))/n
+c2<-nrow(subset(df, yearbuilt <=XQ3 & saleprice>YQ2))/n
+c3<-c1+c2
+c4<-nrow(subset(df, yearbuilt >XQ3 & saleprice<=YQ2))/n
+c5<-nrow(subset(df, yearbuilt >XQ3 & saleprice>YQ2))/n
+c6<-c4+c5
+c7<-c1+c4
+c8<-c2+c5
+c9<-c3+c6
+```
+
+
+```{r tblcounts2}
+dfcounts<-matrix(round(c(c1,c2,c3,c4,c5,c6,c7,c8,c9),3), ncol=3, nrow=3, byrow=TRUE)
+colnames(dfcounts)<-c(
+"<=2d quartile",
+">2d quartile",
+"Total")
+rownames(dfcounts)<-c("<=3rd quartile",">3rd quartile","Total")
+
+print("Quartile Matrix by Percentage")
+dfcounts<-as.table(dfcounts)
+dfcounts
+
+print("Quartile Matrix by Count")
+dfvals<-round(dfcounts*1460,0)
+dfvals
+```
+
+##Part 3: Independence
+
+*Does splitting the training data in this fashion make them independent? Let A be the new variable counting those observations above the 3d quartile for X, and let B be the new variable counting those observations for the 2d quartile for Y.    Does P(A|B)=P(A)P(B)?   Check mathematically, and then evaluate by running a Chi Square test for association.*
+
+```{r papb}
+papb<-c4*c5
+print (paste0("p(A)*p(B)=", round(papb,5)))
+```
+
+$$p(A|B)=p(X>x|Y>y)=0.444$$
+
+$$p(A)*p(B)=0.006$$
+
+$$p(A|B) != p(A)*p(B)$$
+
+```{r chisq, eval=TRUE}
+mat <- matrix(c(691, 404, 41, 323), 2, 2, byrow=T) 
+
+chisq.test(mat, correct=TRUE) 
+```
+
+```{r chisq-1, eval=FALSE}
+#test of alternate chi sq approach
+A<-subset(df, df$YearBuilt>XQ3)
+B<-subset(df, df$SalePrice>YQ2)
+chisq.test(A, B) #issue with variable class
+```
+
+##Part 4: Statistics
+
+*Provide univariate descriptive statistics and appropriate plots for the training data set.  Provide a scatterplot of X and Y.*
+
+> Also see Part 1.
+
+```{r numsummary}
+isnum <- sapply(df, is.numeric)
+dfnum<-df[ , isnum]
+summary(dfnum)
+```
+
+#### Confidence interval
+
+*Provide a 95% CI for the difference in the mean of the variables.*
+
+```{r ttest}
+#t.test(x,y)
+t.test(df$YearBuilt, df$SalePrice)
+```
+
+#### Selective correlation matrix for chosen variables
+
+*Derive a correlation matrix for two of the quantitative variables you selected.*
+
+*Test the hypothesis that the correlation between these variables is 0 and provide a 99% confidence interval.  Discuss the meaning of your analysis.*
+
+```{r mycorr}
+myvars<-data.frame(df$YearBuilt, df$SalePrice)
+#head(myvars) #view header
+cor(myvars)
+cor.test(df$YearBuilt, df$SalePrice, conf.level = 0.99)
+t.test(df$YearBuilt, df$SalePrice, conf.level = 0.99)
+
+mymx<-as.matrix(cor(myvars))
+```
+
+With a 99 percent confidence level, the correlation between Year Built and Sale Price is estimated to be between 0.47 and 0.57.
+
+
+## Part 5: Correlation
+
+*Linear Algebra and Correlation.  Invert your correlation matrix. (This is known as the precision matrix and contains variance inflation factors on the diagonal.)* 
+
+*Multiply the correlation matrix by the precision matrix, and then multiply the precision matrix by the correlation matrix.*
+
+#### Correlation Matrix, Precision Matrix, Identity Matrix
+
+```{r matrices}
+#my correlation matrix
+mymx
+
+#inverse of my correlation matrix, precision matrix
+ginvmymx<-ginv(mymx)
+ginvmymx
+
+#corr mat x precision mat
+mymxginv<-mymx%*%ginvmymx
+round(mymxginv,2)
+
+#precision mat x corr mat
+ginvmymx<-ginvmymx%*%mymx
+round(ginvmymx,2)
+```
+
+
+### Principal Components Analysis
+
+*Conduct principal components analysis (research this!)  and interpret.  Discuss.*
+
+### Header of all quantitative variables
+
+```{r corrall-1, eval=TRUE}
+#Correlation matrix of all quantitative variables in dataframe
+
+kable(head(dfnum))
+```
+
+### Header of correlation matrix for all quantitative variables
+
+```{r corrall-2, eval=TRUE}
+cormatrix<-cor(dfnum)
+cordf<-as.data.frame(cormatrix)
+kable(head(cordf))
+```
+
+### Header of variables with correlation greater than 0.5
+
+```{r corrall-3, eval=TRUE}
+#Source from http://stackoverflow.com/questions/7074246/show-correlations-as-an-ordered-list-not-as-a-large-matrix
+
+cordf[cordf == 1] <- NA #drop correlation of 1, diagonals
+cordf[abs(cordf) < 0.5] <- NA # drop correlations of less than 0.5
+cordf<-as.matrix(cordf)
+cordf2<- na.omit(melt(cordf)) 
+kable(head(cordf2[order(-abs(cordf2$value)),])) # sort by highest correlations
+
+#corrplot(cordf, type = "upper", tl.col = "black", tl.srt = 45)
+
+```
+
+```{r corrall-4, eval=FALSE}
+#test of alternate corr approach
+myvars<-data.frame(df$YearBuilt, df$SalePrice)
+head(myvars)
+```
+
+### All variables with correlation to Sale Price greater than 0.5
+
+```{r topcors-1, eval=TRUE}
+cordf2<-as.data.frame(cordf2)
+# head(cordf2) #view head
+# str(cordf2) #view structure
+topcors <- cordf2[ which(cordf2$X2=='SalePrice'),]
+
+topcorsdf<-topcors[order(-abs(topcors$value)),]# sort by highest correlations
+```
+
+```{r topcors-2}
+cors1<-data.frame(topcorsdf$X1,topcorsdf$X2,topcorsdf$value)
+kable(cors1)
+```
+
+### Plot of correlation to Sale Price
+
+```{r plotcors}
+par(mar=c(8,8,1,1))
+barplot(topcorsdf$value, ylab="Correlation to Sale Price", ylim=c(0,1), col=rainbow(20), las=2, names.arg=topcorsdf$X1)
+```
+
+
+Variables with strongest correlation to Sale Price in descending order:
+
+* OverallQual
+* GrLivArea
+* GarageCars
+* GarageArea
+* TotalBsmtSF
+* X1stFlrSF
+* FullBath
+* TotRmsAbvGrd
+* YearBuilt
+* YearRemodAdd
+
+```{r corrmatplot}
+cormatdata <- select(df, OverallQual, GrLivArea, GarageCars, GarageArea, TotalBsmtSF, X1stFlrSF, FullBath, TotRmsAbvGrd)
+
+cormat1 <- cor(cormatdata)
+cormat1
+corrplot(cormat1, method="circle")
+```
+
+##Part 6: Sampling
+
+*Calculus-Based Probability & Statistics.  Many times, it makes sense to fit a closed form distribution to data.*
+
+*For your variable that is skewed to the right, shift it so that the minimum value is above zero.  Then load the MASS package and run fitdistr to fit an exponential probability density function.  (See  https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/fitdistr.html ).*
+
+*Minimum value is above zero*
+
+```{r sampling-1}
+#check that min val is not 0
+min(df$YearBuilt)
+```
+
+*Run fitdistr to fit an exponential probability density function.*
+
+```{r sampling-2}
+fit <- fitdistr(df$YearBuilt, "exponential")
+
+```
+
+*Find the optimal value of λ for this distribution, and then take 1000 samples from this exponential distribution using this value (e.g., rexp(1000, λ)).*
+
+
+```{r sampling-3}
+#optimal value of λ for this distribution
+
+lambda <- fit$estimate
+sampledf <- rexp(1000, lambda)
+lambda
+```
+
+*Plot a histogram and compare it with a histogram of your original variable.*
+
+```{r sampling-4}
+#Plot a histogram and compare it with a histogram of your original variable.
+
+sampledf<-data.frame(as.numeric(sampledf))
+colnames(sampledf)[1] <- "sample"
+str(sampledf)
+head(sampledf)
+hist(sampledf$sample, col="green", main="Histogram of Exponential Distribution", xlab = "Year Built", breaks=30)
+```
+
+*Using the exponential pdf, find the 5th and 95th percentiles using the cumulative distribution function (CDF).* 
+
+```{r sampling-5}
+#find the 5th and 95th percentiles
+print("5th percentile")
+qexp(.05,rate = lambda)
+print("95th percentile")
+qexp(.95, rate = lambda)
+
+```
+
+*Also generate a 95% confidence interval from the empirical data, assuming normality.*
+
+```{r sampling-6}
+#95% confidence interval from the empirical data
+CI(df$YearBuilt, 0.95)
+ 
+```
+
+*Finally, provide the empirical 5th percentile and 95th percentile of the data.  Discuss.*
+```{r sampling-7}
+quantile(df$YearBuilt, .05)
+quantile(df$YearBuilt, .95)
+```
+
+##Part 7: Modeling
+
+*Modeling.  Build some type of regression  model and submit your model to the competition board.  Provide your complete model summary and results with analysis.  Report your Kaggle.com  user name and score.*
+
+#### Test Model 1: AIC in a Stepwise Algorithm
+
+```{r model1, eval=FALSE}
+#test of alternate model
+modvars <- df[, which(sapply(df, function(x) sum(is.na(x))) == 0)]
+model1 <- step(lm(df$SalePrice ~ ., modvars), direction = 'backward', trace = FALSE)
+model1
+
+#dfglm <- glm(df$SalePrice ~ ., family=binomial, data = df)
+#dfstep <- stepAIC(dfglm, trace = FALSE)
+#dfstep$anova
+```
+
+#### Test Model 2: Multiple Linear Regression
+
+```{r model2}
+fit <- lm(df$SalePrice ~ df$OverallQual + df$GrLivArea + df$GarageCars + df$GarageArea, data=df)
+summary(fit) # show results
+```
+
+Using intercepts from regression summary, create multiple linear regression model.
+
+$$ SalePrice = 26988.854*OverallQual + 49.573*GrLivArea +  11317.522*GarageCars + 41.478*GarageArea -98436.050 $$
+
+```{r modelplots}
+
+par(mfrow=c(2,2))
+X1<-df$OverallQual
+X2<-df$GrLivArea
+X3<-df$GarageCars
+X4<-df$GarageArea
+Y<-df$SalePrice
+
+plot(X1,Y, col="#f06292", main="OverallQual", ylab="Sale Price")
+abline(lm(Y~X1), col="yellow", lwd=3) # regression line (y~x)
+
+plot(X2,Y, col="#9c27b0", main="GrLivArea", ylab="Sale Price")
+abline(lm(Y~X2), col="yellow", lwd=3) # regression line (y~x)
+
+plot(X3,Y, col="#ce93d8", main="GarageCars", ylab="Sale Price")
+abline(lm(Y~X3), col="yellow", lwd=3) # regression line (y~x)
+
+plot(X4,Y, col="#c2185b", main="GarageArea", ylab="Sale Price")
+abline(lm(Y~X4), col="yellow", lwd=3) # regression line (y~x)
+
+```
+
+Load test data set and create calculated column using equation for multiple linear regression. Select required columns and export to csv for contest entry.
+
+```{r load-testdata}
+dftest <- read.csv("test.csv")
+#str(dftest)
+#nrow(dftest)
+
+SalePrice<-((26988.854*df$OverallQual) + (49.573*df$GrLivArea) +  (11317.522*df$GarageCars) + (41.478*df$GarageArea) -98436.050)
+#head(SalePrice)
+
+dftest<-dftest[,c("Id","OverallQual","GrLivArea","GarageCars","GarageArea")]
+
+kable(head(dftest))
+#tail(dftest)
+
+submission <- cbind(dftest$Id,SalePrice)
+colnames(submission)[1] <- "Id"
+submission[submission<0] <- median(SalePrice) #clear negatives due to missing values
+submission<-as.data.frame(submission[1:1459,])
+kable(head(submission))
+#str(submission)
+#dim(submission)
+
+```
+
+#### Export CSV and submit to Kaggle.
+
+Eval set to FALSE for reader convenience.
+
+```{r exportcsv, eval=FALSE}
+write.csv(submission, file = "submissionAAP.csv", quote=FALSE, row.names=FALSE)
+```
+
+Kaggle score: 0.60114
+
+<center><img src="http://raw.githubusercontent.com/spsstudent15/Scrap/master/kagglescore.png"></center>
